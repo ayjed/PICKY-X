@@ -59,13 +59,14 @@ android {
 
     buildTypes {
         release {
-            signingConfig signingConfigs.debug
             def keystorePropertiesFile = rootProject.file("key.properties")
             if (keystorePropertiesFile.exists()) {
                 signingConfig signingConfigs.release
+            } else {
+                throw new GradleException("Release builds require 'android/key.properties' and release keystore. Production release builds must not use debug signing.")
             }
-            minifyEnabled false
-            shrinkResources false
+            minifyEnabled true
+            shrinkResources true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
     }

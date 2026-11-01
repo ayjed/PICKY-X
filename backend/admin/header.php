@@ -1,14 +1,35 @@
 <?php
 // backend/admin/header.php
+
+// Configure secure session cookie settings before starting session
 if (session_status() === PHP_SESSION_NONE) {
+    $isSecure = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ||
+                (isset($_SERVER['SERVER_PORT']) && $_SERVER['SERVER_PORT'] == 443);
+
+    session_set_cookie_params([
+        'lifetime' => 0,
+        'path'     => '/',
+        'domain'   => '',
+        'secure'   => $isSecure,
+        'httponly' => true,
+        'samesite' => 'Lax'
+    ]);
     session_start();
 }
+
 require_once __DIR__ . '/../config/database.php';
 
-if (!isset($_SESSION['admin_logged_in'])) {
-    $_SESSION['admin_logged_in'] = true;
-    $_SESSION['admin_user'] = 'admin';
+// Strict session check: Redirect unauthenticated requests to login page
+if (!isset($_SESSION['admin_logged_in']) || $_SESSION['admin_logged_in'] !== true) {
+    header('Location: index.php?error=unauthorized');
+    exit;
 }
+
+// Ensure CSRF token is available in session
+if (empty($_SESSION['csrf_token'])) {
+    $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+}
+$csrfToken = $_SESSION['csrf_token'];
 
 $pdo = Database::getConnection();
 if (!isset($pageTitle)) {
@@ -41,7 +62,7 @@ if (!isset($pageTitle)) {
         </p>
       </div>
       <div style="display: flex; align-items: center; gap: 12px;">
-        <span class="badge badge-vip" style="font-size: 13px; padding: 6px 12px;">👑 <?= htmlspecialchars($_SESSION['admin_user']) ?></span>
+        <span class="badge badge-vip" style="font-size: 13px; padding: 6px 12px;">👑 <?= htmlspecialchars($_SESSION['admin_user'] ?? 'Administrator') ?></span>
       </div>
     </header>
 

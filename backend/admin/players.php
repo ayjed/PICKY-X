@@ -7,12 +7,23 @@ $pageSubtitle = 'Inspect player profiles, balances, inventories & grant live res
 
 include __DIR__ . '/header.php';
 
-// Handle Actions
+// Handle Actions (Protected with CSRF Verification)
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
-    $targetId = (int)$_POST['user_id'];
+    $submittedToken = $_POST['csrf_token'] ?? '';
+    if (empty($_SESSION['csrf_token']) || !hash_equals($_SESSION['csrf_token'], $submittedToken)) {
+        http_response_code(403);
+        die('Security Verification Failed: Invalid or missing CSRF token.');
+    }
+
+    $targetId = (int)($_POST['user_id'] ?? 0);
+    if ($targetId <= 0) {
+        header("Location: players.php?msg=Invalid+User+ID");
+        exit;
+    }
+
     if ($_POST['action'] === 'grant_resources') {
-        $addCoins = (int)$_POST['add_coins'];
-        $addGems = (int)$_POST['add_gems'];
+        $addCoins = (int)($_POST['add_coins'] ?? 0);
+        $addGems = (int)($_POST['add_gems'] ?? 0);
         $pdo->prepare("UPDATE wallets SET coins = coins + ?, gems = gems + ? WHERE user_id = ?")
             ->execute([$addCoins, $addGems, $targetId]);
         header("Location: players.php?msg=Resources+Granted+Successfully");
@@ -159,6 +170,7 @@ $players = $stmt->fetchAll();
               <div style="display: flex; gap: 6px; flex-wrap: wrap;">
                 <!-- Grant +500 Coins, +25 Gems -->
                 <form method="POST" style="display: inline;">
+                  <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrfToken) ?>">
                   <input type="hidden" name="user_id" value="<?= $p['id'] ?>">
                   <input type="hidden" name="action" value="grant_resources">
                   <input type="hidden" name="add_coins" value="500">
@@ -168,6 +180,7 @@ $players = $stmt->fetchAll();
 
                 <!-- Refill Lives -->
                 <form method="POST" style="display: inline;">
+                  <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrfToken) ?>">
                   <input type="hidden" name="user_id" value="<?= $p['id'] ?>">
                   <input type="hidden" name="action" value="refill_lives">
                   <button type="submit" class="btn btn-sm" style="background: rgba(244, 63, 94, 0.2); color: #fecdd3;" title="Refill Hearts to 5">❤️ Refill</button>
@@ -175,6 +188,7 @@ $players = $stmt->fetchAll();
 
                 <!-- Toggle VIP -->
                 <form method="POST" style="display: inline;">
+                  <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrfToken) ?>">
                   <input type="hidden" name="user_id" value="<?= $p['id'] ?>">
                   <input type="hidden" name="action" value="toggle_vip">
                   <button type="submit" class="btn btn-sm" style="background: rgba(245, 158, 11, 0.2); color: var(--accent-gold);">

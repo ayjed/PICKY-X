@@ -145,5 +145,8 @@ Welcome to the **Picky X Backend & LiveOps Work Sheet Tracker**. This tracker pr
 | **👥 Player Management** | [http://localhost/pickyx_api/admin/players.php](http://localhost/pickyx_api/admin/players.php) | Grant +500🪙+25💎, Refill ❤️, VIP toggle |
 | **💳 IAP Transactions** | [http://localhost/pickyx_api/admin/transactions.php](http://localhost/pickyx_api/admin/transactions.php) | Financial ledger, Order IDs, Gross revenue |
 | **🔌 API Diagnostics** | [http://localhost/pickyx_api/admin/api_diagnostics.php](http://localhost/pickyx_api/admin/api_diagnostics.php) | Interactive live JSON test bench |
-| **🔐 Admin Login** | [http://localhost/pickyx_api/admin/index.php](http://localhost/pickyx_api/admin/index.php) | User: `admin` \| Pass: `pickyx2026admin` |
-| **🗄️ Database Host** | `127.0.0.1:3306` (MySQL / phpMyAdmin) | Database: `pickyx_db` \| User: `root` |
+| **🔐 Admin Login** | [http://localhost/pickyx_api/admin/index.php](http://localhost/pickyx_api/admin/index.php) | Configured securely in `backend/config/.env` |
+| **🗄️ Database Host** | `127.0.0.1:3306` (MySQL / phpMyAdmin) | Database: `pickyx_db` \| User: Configured in `.env` |
+
+> [!IMPORTANT]
+> **Credential Security**: Admin portal and database credentials are managed exclusively via `backend/config/.env` (excluded from Git). Never commit secrets or plaintext passwords to source control. For production deployments, rotate all existing secrets and generate a cryptographically strong `API_SECRET_KEY`.

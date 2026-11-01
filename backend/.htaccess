@@ -1,0 +1,14 @@
+# Picky X Backend Apache Access Control
+# Prevent directory listing
+Options -Indexes
+
+# Deny direct access to all dotfiles (e.g. .env, .env.example, .git, .gitignore)
+<FilesMatch "^\.">
+    Require all denied
+</FilesMatch>
+
+# Deny direct access to sensitive configuration, database schemas, and lock files
+<FilesMatch "\.(env|lock|sql|log|md)$">
+    Require all denied
+</FilesMatch>
+

@@ -3,6 +3,28 @@
 
 require_once __DIR__ . '/config/constants.php';
 
+// Security Check 1: Prevent execution if already locked
+$lockFile = __DIR__ . '/setup.lock';
+if (file_exists($lockFile)) {
+    if (php_sapi_name() !== 'cli') {
+        http_response_code(403);
+    }
+    echo "====================================================\n";
+    echo "⛔ SETUP LOCKED: Database setup has already run.\n";
+    echo "To re-run setup, manually delete: backend/setup.lock\n";
+    echo "====================================================\n";
+    exit(1);
+}
+
+// Security Check 2: Require CLI or valid setup token if invoked via web
+if (php_sapi_name() !== 'cli') {
+    $token = $_GET['setup_token'] ?? '';
+    if (empty($token) || !hash_equals(API_SECRET_KEY, $token)) {
+        http_response_code(403);
+        die("403 Forbidden: Web database setup requires valid authorization token or CLI execution.\n");
+    }
+}
+
 echo "====================================================\n";
 echo "🚀 Initializing Picky X MySQL Database (pickyx_db)...\n";
 echo "====================================================\n";
@@ -144,16 +166,37 @@ try {
     ");
     echo "✔ Table 'admin_users' created.\n";
 
-    // 11. Seed Admin User
-    $adminUser = 'admin';
-    $adminPass = 'pickyx2026admin';
-    $stmt = $pdo->prepare("SELECT id FROM admin_users WHERE username = ?");
-    $stmt->execute([$adminUser]);
-    if (!$stmt->fetch()) {
+    // 11. Secure Administrator Creation
+    $checkAdmin = $pdo->query("SELECT id, username FROM admin_users LIMIT 1")->fetch();
+    if ($checkAdmin) {
+        echo "✔ Administrator account already exists ('" . htmlspecialchars($checkAdmin['username']) . "'). Existing administrator preserved.\n";
+    } else {
+        $adminUser = getenv('ADMIN_DEFAULT_USER') ?: ($_ENV['ADMIN_DEFAULT_USER'] ?? 'admin');
+        $adminPass = getenv('ADMIN_DEFAULT_PASS') ?: ($_ENV['ADMIN_DEFAULT_PASS'] ?? '');
+        $isGenerated = false;
+
+        if (empty($adminPass)) {
+            // Generate a secure random password if not supplied in environment
+            $adminPass = bin2hex(random_bytes(10));
+            $isGenerated = true;
+        }
+
         $hash = password_hash($adminPass, PASSWORD_BCRYPT);
         $insertAdmin = $pdo->prepare("INSERT INTO admin_users (username, password_hash, role) VALUES (?, ?, 'superadmin')");
         $insertAdmin->execute([$adminUser, $hash]);
-        echo "✔ Seeded default admin account: Username='$adminUser', Password='$adminPass'\n";
+
+        if (php_sapi_name() === 'cli') {
+            echo "✔ Administrator account initialized successfully.\n";
+            echo "  Username: $adminUser\n";
+            if ($isGenerated) {
+                echo "  Generated Password: $adminPass\n";
+                echo "  (Please save this password securely. It will not be printed again.)\n";
+            } else {
+                echo "  Password: [Loaded securely from environment]\n";
+            }
+        } else {
+            echo "✔ Administrator account initialized successfully.\n";
+        }
     }
 
     // 12. Seed Mock Top Players for Realistic Country & Global Leaderboards
@@ -200,7 +243,12 @@ try {
     }
     echo "✔ Seeded 15 top international & national leaderboard players!\n";
 
+    // 13. Write Setup Lock File
+    file_put_contents($lockFile, "Setup completed on " . date('Y-m-d H:i:s') . "\n");
+    echo "🔒 Setup lock written to 'backend/setup.lock'. Subsequent executions are prevented.\n";
+
     echo "\n🎉 Database setup completed successfully!\n";
 } catch (Exception $e) {
     echo "\n❌ Setup Failed: " . $e->getMessage() . "\n";
+    exit(1);
 }

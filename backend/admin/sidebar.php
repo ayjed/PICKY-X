@@ -45,7 +45,7 @@ if (!isset($activePage)) {
     <div style="margin-top: 6px;">Host: <code>127.0.0.1:3306</code></div>
     <div style="margin-top: 4px;">Database: <code>pickyx_db</code></div>
     <div style="margin-top: 12px;">
-      <a href="index.php?logout=1" style="color: var(--accent-rose); text-decoration: none; font-weight: 600;">🚪 Sign Out</a>
+      <a href="logout.php" style="color: var(--accent-rose); text-decoration: none; font-weight: 600;">🚪 Sign Out</a>
     </div>
   </div>
 </aside>

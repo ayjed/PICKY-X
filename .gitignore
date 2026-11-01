@@ -39,13 +39,33 @@ migrate_working_dir/
 **/android/local.properties
 **/android/**/GeneratedPluginRegistrant.java
 
-# Release Keystore & Secrets (CRITICAL)
+# Release Binaries & Packages (CRITICAL - Preserve locally, exclude from Git)
+*.apk
+*.aab
+*.ipa
+*.ap_
+*.dex
+
+# Release Keystore & Signing Credentials (CRITICAL)
 *.keystore
 *.jks
 key.properties
 google-services.json
 GoogleService-Info.plist
 
-# Symbol files / coverage
+# Environment Secrets & Local Config (CRITICAL)
+.env
+.env.*
+*.env
+backend/config/.env
+backend/.env
+backend/setup.lock
+setup.lock
+!.env.example
+!*.env.example
+!backend/config/.env.example
+
+# Test & Debug Output / Coverage
 coverage/
 *.symbols
+test-results/

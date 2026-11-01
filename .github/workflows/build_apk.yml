@@ -33,8 +33,33 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
+      - name: Run static analysis
+        run: flutter analyze
+
       - name: Run automated unit & widget tests
         run: flutter test
+
+      - name: Configure Production Signing Keystore
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+          STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
+        run: |
+          if [ -z "$KEYSTORE_BASE64" ] || [ -z "$KEY_ALIAS" ] || [ -z "$KEY_PASSWORD" ] || [ -z "$STORE_PASSWORD" ]; then
+            echo "::error::Missing required production signing secrets (KEYSTORE_BASE64, KEY_ALIAS, KEY_PASSWORD, STORE_PASSWORD)."
+            echo "::error::Release builds require the production upload keystore. Refusing to build unsigned or debug-substituted release packages."
+            exit 1
+          fi
+          echo "Production keystore secret detected. Configuring release signing..."
+          echo "$KEYSTORE_BASE64" | base64 --decode > android/app/upload-keystore.jks
+          cat <<EOF > android/key.properties
+          keyAlias=$KEY_ALIAS
+          keyPassword=$KEY_PASSWORD
+          storeFile=upload-keystore.jks
+          storePassword=$STORE_PASSWORD
+          EOF
+          echo "Production signing credentials configured successfully."
 
       - name: Build Release APK
         run: flutter build apk --release
