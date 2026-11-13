@@ -18,6 +18,10 @@ class GameController extends ChangeNotifier {
   final Random _random;
 
   Timer? _timer;
+  Timer? _mismatchTimer;
+  Timer? _peekTimer;
+  int _sessionId = 0;
+  bool _isDisposed = false;
   late GameState _state;
 
   // Sound & Live-Ops Event Callback Hooks
@@ -53,11 +57,28 @@ class GameController extends ChangeNotifier {
   GameStatus get status => _state.status;
   int get movesRemaining => _state.movesRemaining;
   int? get maxMoves => _state.maxMoves;
+  bool get isDisposed => _isDisposed;
+
+  @visibleForTesting
+  bool get hasPendingMismatchTimer => _mismatchTimer != null && _mismatchTimer!.isActive;
+
+  @visibleForTesting
+  bool get hasPendingPeekTimer => _peekTimer != null && _peekTimer!.isActive;
+
+  void _cancelAllTimers() {
+    _timer?.cancel();
+    _timer = null;
+    _mismatchTimer?.cancel();
+    _mismatchTimer = null;
+    _peekTimer?.cancel();
+    _peekTimer = null;
+  }
 
   /// Resets the game session, cancels timers, and creates a newly shuffled deck.
   void resetGame() {
-    _timer?.cancel();
-    _timer = null;
+    if (_isDisposed) return;
+    _sessionId++;
+    _cancelAllTimers();
 
     final targetPairs = level?.totalPairs ?? defaultTotalPairs;
     final maxAllowedMoves = level?.maxMoves;
@@ -136,9 +157,15 @@ class GameController extends ChangeNotifier {
   }
 
   void _startTimer() {
-    if (_timer == null && _state.status != GameStatus.completed) {
+    if (_timer == null && _state.status != GameStatus.completed && !_isDisposed) {
       _state = _state.copyWith(status: GameStatus.playing);
+      final currentSession = _sessionId;
       _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
+        if (_isDisposed || _sessionId != currentSession) {
+          timer.cancel();
+          return;
+        }
+
         final newElapsed = _state.elapsedSeconds + 1;
 
         // Check Time Limit in Rush Levels
@@ -164,7 +191,7 @@ class GameController extends ChangeNotifier {
 
   /// Handles user card tap interaction.
   void handleCardTap(int index) {
-    if (_state.isInputLocked || _state.status == GameStatus.completed || _state.status == GameStatus.outOfMoves || _state.status == GameStatus.failed) {
+    if (_isDisposed || _state.isInputLocked || _state.status == GameStatus.completed || _state.status == GameStatus.outOfMoves || _state.status == GameStatus.failed) {
       return;
     }
     if (index < 0 || index >= _state.deck.length) return;
@@ -249,11 +276,21 @@ class GameController extends ChangeNotifier {
       final hasMovesConstraint = _state.maxMoves != null;
       final isOutOfMoves = hasMovesConstraint && (totalMovesUsed >= _state.maxMoves!);
 
+      final currentSession = _sessionId;
       _state = _state.copyWith(isInputLocked: true);
       notifyListeners();
       onMismatch?.call();
 
-      Timer(Duration(milliseconds: mismatchDelayMs), () {
+      // Guard: do not schedule a timer if onMismatch callback reset or disposed the controller
+      if (_isDisposed || _sessionId != currentSession) {
+        return;
+      }
+
+      _mismatchTimer?.cancel();
+      _mismatchTimer = Timer(Duration(milliseconds: mismatchDelayMs), () {
+        if (_isDisposed || _sessionId != currentSession) return;
+        _mismatchTimer = null;
+
         final resetDeck = List<CardModel>.from(_state.deck);
         resetDeck[firstIdx] = resetDeck[firstIdx].copyWith(isFaceUp: false);
         resetDeck[secondIdx] = resetDeck[secondIdx].copyWith(isFaceUp: false);
@@ -287,6 +324,7 @@ class GameController extends ChangeNotifier {
 
   /// Adds extra moves to continue playing (from Rewarded Ad or Store Coins)
   void addExtraMoves(int extraMoves) {
+    if (_isDisposed) return;
     if (_state.maxMoves != null) {
       _state = _state.copyWith(
         maxMoves: _state.maxMoves! + extraMoves,
@@ -300,7 +338,7 @@ class GameController extends ChangeNotifier {
 
   /// Peek Booster: Reveals all unrevealed cards for 2.5 seconds
   void applyPeekBooster() {
-    if (_state.isInputLocked || _state.status == GameStatus.completed) return;
+    if (_state.isInputLocked || _state.status == GameStatus.completed || _isDisposed) return;
 
     final peekDeck = _state.deck.map((card) {
       if (!card.isMatched) {
@@ -312,7 +350,12 @@ class GameController extends ChangeNotifier {
     _state = _state.copyWith(deck: peekDeck, isPeekActive: true, isInputLocked: true);
     notifyListeners();
 
-    Timer(const Duration(milliseconds: 2500), () {
+    final currentSession = _sessionId;
+    _peekTimer?.cancel();
+    _peekTimer = Timer(const Duration(milliseconds: 2500), () {
+      if (_isDisposed || _sessionId != currentSession) return;
+      _peekTimer = null;
+
       final unpeekDeck = _state.deck.map((card) {
         return card.copyWith(isPeekRevealed: false);
       }).toList();
@@ -324,6 +367,7 @@ class GameController extends ChangeNotifier {
 
   /// Freeze / +Moves Booster: Adds +3 extra moves
   void applyFreezeBooster() {
+    if (_isDisposed) return;
     if (_state.maxMoves != null) {
       _state = _state.copyWith(maxMoves: _state.maxMoves! + 3);
       notifyListeners();
@@ -332,7 +376,7 @@ class GameController extends ChangeNotifier {
 
   /// Magic Wand Booster: Instantly matches 1 random unmatched pair
   void applyWandBooster() {
-    if (_state.isInputLocked || _state.status == GameStatus.completed) return;
+    if (_isDisposed || _state.isInputLocked || _state.status == GameStatus.completed) return;
 
     // Find first unmatched pair key
     String? targetKey;
@@ -378,7 +422,7 @@ class GameController extends ChangeNotifier {
 
   /// Shuffle Booster: Reshuffles remaining unmatched cards
   void applyShuffleBooster() {
-    if (_state.isInputLocked || _state.status == GameStatus.completed) return;
+    if (_isDisposed || _state.isInputLocked || _state.status == GameStatus.completed) return;
 
     final unmatchedCards = _state.deck.where((c) => !c.isMatched).toList();
     unmatchedCards.shuffle(_random);
@@ -397,8 +441,16 @@ class GameController extends ChangeNotifier {
 
   @override
   void dispose() {
-    _timer?.cancel();
-    _timer = null;
+    _isDisposed = true;
+    _sessionId++;
+    _cancelAllTimers();
     super.dispose();
+  }
+
+  @override
+  void notifyListeners() {
+    if (!_isDisposed) {
+      super.notifyListeners();
+    }
   }
 }
