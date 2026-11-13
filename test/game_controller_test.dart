@@ -139,5 +139,116 @@ void main() {
       expect(controller.status, GameStatus.idle);
       expect(controller.deck.every((c) => !c.isFaceUp && !c.isMatched), true);
     });
+
+    group('Timer Lifecycle & Session Isolation Regression Tests', () {
+      test('Disposing controller with active mismatch timer cancels timer and prevents callback execution', () async {
+        final controller = GameController(mismatchDelayMs: 60);
+
+        final key0 = controller.deck[0].pairKey;
+        int mismatchIdx = -1;
+        for (int i = 1; i < controller.deck.length; i++) {
+          if (controller.deck[i].pairKey != key0) {
+            mismatchIdx = i;
+            break;
+          }
+        }
+        expect(mismatchIdx, isNonNegative);
+
+        controller.handleCardTap(0);
+        controller.handleCardTap(mismatchIdx);
+
+        expect(controller.hasPendingMismatchTimer, true);
+        expect(controller.isInputLocked, true);
+
+        // Dispose immediately while timer is ticking
+        controller.dispose();
+        expect(controller.isDisposed, true);
+        expect(controller.hasPendingMismatchTimer, false);
+
+        // Wait past the original timer duration
+        await Future<void>.delayed(const Duration(milliseconds: 80));
+
+        // Controller must remain safely disposed without throwing errors
+        expect(controller.isDisposed, true);
+      });
+
+      test('Resetting game cancels pending mismatch timer and prevents modifying new session', () async {
+        final controller = GameController(mismatchDelayMs: 60);
+
+        final key0 = controller.deck[0].pairKey;
+        int mismatchIdx = -1;
+        for (int i = 1; i < controller.deck.length; i++) {
+          if (controller.deck[i].pairKey != key0) {
+            mismatchIdx = i;
+            break;
+          }
+        }
+        expect(mismatchIdx, isNonNegative);
+
+        controller.handleCardTap(0);
+        controller.handleCardTap(mismatchIdx);
+        expect(controller.hasPendingMismatchTimer, true);
+
+        // Reset game mid-mismatch
+        controller.resetGame();
+
+        expect(controller.hasPendingMismatchTimer, false);
+        expect(controller.moves, 0);
+        expect(controller.isInputLocked, false);
+        expect(controller.status, GameStatus.idle);
+
+        // Wait past the original mismatch timer duration
+        await Future<void>.delayed(const Duration(milliseconds: 80));
+
+        // New game session must not have been affected by old timer
+        expect(controller.moves, 0);
+        expect(controller.isInputLocked, false);
+        expect(controller.status, GameStatus.idle);
+      });
+
+      test('Disposing controller while Peek Booster timer is active cancels timer safely', () {
+        final controller = GameController();
+        controller.applyPeekBooster();
+
+        expect(controller.hasPendingPeekTimer, true);
+        expect(controller.state.isPeekActive, true);
+        expect(controller.isInputLocked, true);
+
+        controller.dispose();
+
+        expect(controller.isDisposed, true);
+        expect(controller.hasPendingPeekTimer, false);
+      });
+
+      test('Resetting game cancels active Peek Booster timer and resets peek state', () {
+        final controller = GameController();
+        controller.applyPeekBooster();
+
+        expect(controller.hasPendingPeekTimer, true);
+        expect(controller.state.isPeekActive, true);
+
+        controller.resetGame();
+
+        expect(controller.hasPendingPeekTimer, false);
+        expect(controller.state.isPeekActive, false);
+        expect(controller.isInputLocked, false);
+      });
+
+      test('Calls to card taps and boosters are safely ignored when disposed', () {
+        final controller = GameController();
+        controller.dispose();
+
+        // Tapping card or applying booster on disposed controller should not throw
+        controller.handleCardTap(0);
+        controller.applyPeekBooster();
+        controller.applyFreezeBooster();
+        controller.applyWandBooster();
+        controller.applyShuffleBooster();
+        controller.addExtraMoves(3);
+
+        expect(controller.moves, 0);
+        expect(controller.isDisposed, true);
+      });
+    });
   });
 }
