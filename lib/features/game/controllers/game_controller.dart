@@ -58,7 +58,11 @@ class GameController extends ChangeNotifier {
   int get movesRemaining => _state.movesRemaining;
   int? get maxMoves => _state.maxMoves;
   bool get isDisposed => _isDisposed;
+
+  @visibleForTesting
   bool get hasPendingMismatchTimer => _mismatchTimer != null && _mismatchTimer!.isActive;
+
+  @visibleForTesting
   bool get hasPendingPeekTimer => _peekTimer != null && _peekTimer!.isActive;
 
   void _cancelAllTimers() {
@@ -72,6 +76,7 @@ class GameController extends ChangeNotifier {
 
   /// Resets the game session, cancels timers, and creates a newly shuffled deck.
   void resetGame() {
+    if (_isDisposed) return;
     _sessionId++;
     _cancelAllTimers();
 
@@ -271,11 +276,16 @@ class GameController extends ChangeNotifier {
       final hasMovesConstraint = _state.maxMoves != null;
       final isOutOfMoves = hasMovesConstraint && (totalMovesUsed >= _state.maxMoves!);
 
+      final currentSession = _sessionId;
       _state = _state.copyWith(isInputLocked: true);
       notifyListeners();
       onMismatch?.call();
 
-      final currentSession = _sessionId;
+      // Guard: do not schedule a timer if onMismatch callback reset or disposed the controller
+      if (_isDisposed || _sessionId != currentSession) {
+        return;
+      }
+
       _mismatchTimer?.cancel();
       _mismatchTimer = Timer(Duration(milliseconds: mismatchDelayMs), () {
         if (_isDisposed || _sessionId != currentSession) return;

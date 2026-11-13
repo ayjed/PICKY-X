@@ -249,6 +249,89 @@ void main() {
         expect(controller.moves, 0);
         expect(controller.isDisposed, true);
       });
+
+      test('Calling resetGame on disposed controller is a safe no-op', () {
+        final controller = GameController();
+        controller.dispose();
+        expect(controller.isDisposed, true);
+
+        // resetGame should do nothing and not revive controller
+        controller.resetGame();
+        expect(controller.isDisposed, true);
+        expect(controller.hasPendingMismatchTimer, false);
+        expect(controller.hasPendingPeekTimer, false);
+      });
+
+      test('onMismatch callback synchronously resetting game prevents scheduling mismatch timer', () async {
+        late GameController controller;
+        int mismatchCallbackCount = 0;
+
+        controller = GameController(
+          mismatchDelayMs: 60,
+          onMismatch: () {
+            mismatchCallbackCount++;
+            controller.resetGame();
+          },
+        );
+
+        final key0 = controller.deck[0].pairKey;
+        int mismatchIdx = -1;
+        for (int i = 1; i < controller.deck.length; i++) {
+          if (controller.deck[i].pairKey != key0) {
+            mismatchIdx = i;
+            break;
+          }
+        }
+        expect(mismatchIdx, isNonNegative);
+
+        controller.handleCardTap(0);
+        controller.handleCardTap(mismatchIdx);
+
+        expect(mismatchCallbackCount, 1);
+        // Because onMismatch reset the game, no mismatch timer should be scheduled
+        expect(controller.hasPendingMismatchTimer, false);
+        expect(controller.isInputLocked, false);
+        expect(controller.moves, 0);
+
+        // Wait past delay to ensure no phantom callbacks execute
+        await Future<void>.delayed(const Duration(milliseconds: 80));
+        expect(controller.moves, 0);
+        expect(controller.isInputLocked, false);
+      });
+
+      test('onMismatch callback synchronously disposing controller prevents scheduling mismatch timer', () async {
+        late GameController controller;
+        int mismatchCallbackCount = 0;
+
+        controller = GameController(
+          mismatchDelayMs: 60,
+          onMismatch: () {
+            mismatchCallbackCount++;
+            controller.dispose();
+          },
+        );
+
+        final key0 = controller.deck[0].pairKey;
+        int mismatchIdx = -1;
+        for (int i = 1; i < controller.deck.length; i++) {
+          if (controller.deck[i].pairKey != key0) {
+            mismatchIdx = i;
+            break;
+          }
+        }
+        expect(mismatchIdx, isNonNegative);
+
+        controller.handleCardTap(0);
+        controller.handleCardTap(mismatchIdx);
+
+        expect(mismatchCallbackCount, 1);
+        expect(controller.isDisposed, true);
+        expect(controller.hasPendingMismatchTimer, false);
+
+        // Wait past delay to ensure no callbacks execute on disposed controller
+        await Future<void>.delayed(const Duration(milliseconds: 80));
+        expect(controller.isDisposed, true);
+      });
     });
   });
 }
