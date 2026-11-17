@@ -3,7 +3,7 @@
 
 Picky X is a mobile card-matching game built with Flutter and Dart.
 
-
+The project focuses on interactive gameplay, responsive interfaces, and a smooth user experience.
 
 
 ## How to Play
